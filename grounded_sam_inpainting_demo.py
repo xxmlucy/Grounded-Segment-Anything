@@ -19,14 +19,12 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 # diffusers
 import PIL
 import requests
 import torch
 from io import BytesIO
 from diffusers import StableDiffusionInpaintPipeline
-
 
 def load_image(image_path):
     # load image
@@ -42,17 +40,15 @@ def load_image(image_path):
     image, _ = transform(image_pil, None)  # 3, h, w
     return image_pil, image
 
-
 def load_model(model_config_path, model_checkpoint_path, device):
     args = SLConfig.fromfile(model_config_path)
     args.device = device
     model = build_model(args)
-    checkpoint = torch.load(model_checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(model_checkpoint_path, map_location=device)
     load_res = model.load_state_dict(clean_state_dict(checkpoint["model"]), strict=False)
     print(load_res)
     _ = model.eval()
     return model
-
 
 def get_grounding_output(model, image, caption, box_threshold, text_threshold, with_logits=True, device="cpu"):
     caption = caption.lower()
@@ -98,13 +94,11 @@ def show_mask(mask, ax, random_color=False):
     mask_image = mask.reshape(h, w, 1) * color.reshape(1, 1, -1)
     ax.imshow(mask_image)
 
-
 def show_box(box, ax, label):
     x0, y0 = box[0], box[1]
     w, h = box[2] - box[0], box[3] - box[1]
     ax.add_patch(plt.Rectangle((x0, y0), w, h, edgecolor='green', facecolor=(0,0,0,0), lw=2)) 
     ax.text(x0, y0, label)
-
 
 if __name__ == "__main__":
 
@@ -197,14 +191,14 @@ if __name__ == "__main__":
     if inpaint_mode == 'merge':
         masks = torch.sum(masks, dim=0).unsqueeze(0)
         masks = torch.where(masks > 0, True, False)
-    mask = masks[0][0].cpu().numpy() # simply choose the first mask, which will be refine in the future release
+    mask = masks[0][0].cpu().numpy() # simply choose the first mask, which will be refined in the future release
     mask_pil = Image.fromarray(mask)
     image_pil = Image.fromarray(image)
     
     pipe = StableDiffusionInpaintPipeline.from_pretrained(
-    "runwayml/stable-diffusion-inpainting", torch_dtype=torch.float16,cache_dir=cache_dir
+    "runwayml/stable-diffusion-inpainting", cache_dir=cache_dir
     )
-    pipe = pipe.to("cuda")
+    pipe = pipe.to(device)  # use the same device as specified in the arguments
 
     image_pil = image_pil.resize((512, 512))
     mask_pil = mask_pil.resize((512, 512))
@@ -212,5 +206,3 @@ if __name__ == "__main__":
     image = pipe(prompt=inpaint_prompt, image=image_pil, mask_image=mask_pil).images[0]
     image = image.resize(size)
     image.save(os.path.join(output_dir, "grounded_sam_inpainting_output.jpg"))
-
-

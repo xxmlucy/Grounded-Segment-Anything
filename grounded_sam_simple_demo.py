@@ -8,7 +8,8 @@ import torchvision
 from groundingdino.util.inference import Model
 from segment_anything import sam_model_registry, SamPredictor
 
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# Use CPU device
+DEVICE = torch.device('cpu')
 
 # GroundingDINO config and checkpoint
 GROUNDING_DINO_CONFIG_PATH = "GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py"
@@ -19,13 +20,15 @@ SAM_ENCODER_VERSION = "vit_h"
 SAM_CHECKPOINT_PATH = "./sam_vit_h_4b8939.pth"
 
 # Building GroundingDINO inference model
-grounding_dino_model = Model(model_config_path=GROUNDING_DINO_CONFIG_PATH, model_checkpoint_path=GROUNDING_DINO_CHECKPOINT_PATH)
+grounding_dino_model = Model(model_config_path=GROUNDING_DINO_CONFIG_PATH, model_checkpoint_path=GROUNDING_DINO_CHECKPOINT_PATH, device=DEVICE)
+grounding_dino_model.model.to(DEVICE)  # Move model to CPU
+print(f"GroundingDINO model loaded and moved to {DEVICE}")
 
 # Building SAM Model and SAM Predictor
 sam = sam_model_registry[SAM_ENCODER_VERSION](checkpoint=SAM_CHECKPOINT_PATH)
 sam.to(device=DEVICE)
 sam_predictor = SamPredictor(sam)
-
+print(f"SAM model loaded and moved to {DEVICE}")
 
 # Predict classes and hyper-param for GroundingDINO
 SOURCE_IMAGE_PATH = "./assets/demo2.jpg"
@@ -34,11 +37,10 @@ BOX_THRESHOLD = 0.25
 TEXT_THRESHOLD = 0.25
 NMS_THRESHOLD = 0.8
 
-
-# load image
+# Load image
 image = cv2.imread(SOURCE_IMAGE_PATH)
 
-# detect objects
+# Detect objects
 detections = grounding_dino_model.predict_with_classes(
     image=image,
     classes=CLASSES,
@@ -46,7 +48,7 @@ detections = grounding_dino_model.predict_with_classes(
     text_threshold=TEXT_THRESHOLD
 )
 
-# annotate image with detections
+# Annotate image with detections
 box_annotator = sv.BoxAnnotator()
 labels = [
     f"{CLASSES[class_id]} {confidence:0.2f}" 
@@ -54,9 +56,8 @@ labels = [
     in detections]
 annotated_frame = box_annotator.annotate(scene=image.copy(), detections=detections, labels=labels)
 
-# save the annotated grounding dino image
+# Save the annotated grounding dino image
 cv2.imwrite("groundingdino_annotated_image.jpg", annotated_frame)
-
 
 # NMS post process
 print(f"Before NMS: {len(detections.xyxy)} boxes")
@@ -85,15 +86,14 @@ def segment(sam_predictor: SamPredictor, image: np.ndarray, xyxy: np.ndarray) ->
         result_masks.append(masks[index])
     return np.array(result_masks)
 
-
-# convert detections to masks
+# Convert detections to masks
 detections.mask = segment(
     sam_predictor=sam_predictor,
     image=cv2.cvtColor(image, cv2.COLOR_BGR2RGB),
     xyxy=detections.xyxy
 )
 
-# annotate image with detections
+# Annotate image with detections
 box_annotator = sv.BoxAnnotator()
 mask_annotator = sv.MaskAnnotator()
 labels = [
@@ -103,5 +103,5 @@ labels = [
 annotated_image = mask_annotator.annotate(scene=image.copy(), detections=detections)
 annotated_image = box_annotator.annotate(scene=annotated_image, detections=detections, labels=labels)
 
-# save the annotated grounded-sam image
+# Save the annotated grounded-sam image
 cv2.imwrite("grounded_sam_annotated_image.jpg", annotated_image)
